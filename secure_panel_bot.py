@@ -3,10 +3,11 @@ import os
 import sqlite3
 from datetime import datetime
 
-from aiogram import Bot, Dispatcher, types
+from aiogram import Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
 from aiogram.enums import ParseMode
+from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 
 # ================= НАСТРОЙКИ =================
