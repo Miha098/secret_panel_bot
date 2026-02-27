@@ -4,7 +4,7 @@ import sqlite3
 from datetime import datetime
 
 from aiogram import Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ChatMemberUpdated
 from aiogram.filters import CommandStart
 from aiogram.enums import ParseMode
 from aiogram import Bot
@@ -91,7 +91,8 @@ def main_panel():
     kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="📊 System Logs"), KeyboardButton(text="👥 User Manager")],
-            [KeyboardButton(text="🔍 Error Scanner"), KeyboardButton(text="🛡 Security")]
+            [KeyboardButton(text="🔍 Error Scanner"), KeyboardButton(text="🛡 Security")],
+            [KeyboardButton(text="🚪 Exit Chat")]
         ],
         resize_keyboard=True
     )
@@ -100,7 +101,8 @@ def main_panel():
 def root_panel():
     kb = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🔑 Change Password"), KeyboardButton(text="💣 SELF-DESTRUCT")]
+            [KeyboardButton(text="🔑 Change Password"), KeyboardButton(text="💣 SELF-DESTRUCT")],
+            [KeyboardButton(text="🚪 Exit Chat")]
         ],
         resize_keyboard=True
     )
@@ -165,6 +167,16 @@ async def main_handler(message: types.Message):
         await bot.session.close()
         os._exit(0)
 
+    # ===== ВЫХОД ИЗ ЧАТА =====
+    if message.text == "🚪 Exit Chat" and user_id in authorized_users:
+        authorized_users.remove(user_id)
+        save_system_log(f"SYSTEM: User {user_id} exited secure chat")
+        await message.answer(
+            "🔴 You have exited the secure chat.",
+            reply_markup=main_panel() if user_id != ROOT_ID else root_panel()
+        )
+        return
+
     # ===== СЕКРЕТНЫЙ ЧАТ =====
     if user_id in authorized_users:
         save_message(user_id, message.text)
@@ -172,6 +184,15 @@ async def main_handler(message: types.Message):
         await bot.send_chat_action(partner_id, "typing")
         await asyncio.sleep(1)
         await bot.send_message(partner_id, message.text)
+
+# ================= АВТО-ВЫХОД ПРИ ПОКИДАНИИ ЧАТА =================
+@dp.my_chat_member()
+async def chat_member_update_handler(event: ChatMemberUpdated):
+    user_id = event.from_user.id
+    if event.new_chat_member.status in ["left", "kicked"]:
+        if user_id in authorized_users:
+            authorized_users.remove(user_id)
+            save_system_log(f"SYSTEM: User {user_id} automatically exited secure chat (left chat)")
 
 # ================= ЗАПУСК =================
 async def main():
