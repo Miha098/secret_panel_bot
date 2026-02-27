@@ -1,202 +1,97 @@
-import asyncio
-import os
-import sqlite3
-from datetime import datetime
-
-from aiogram import Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ChatMemberUpdated
-from aiogram.filters import CommandStart
-from aiogram.enums import ParseMode
-from aiogram import Bot
+from aiogram import Bot, Dispatcher, types
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+import asyncio
 
-# ================= НАСТРОЙКИ =================
-BOT_TOKEN = "8046271807:AAExKsEgXLkxvrEvPWTfyfMsI2OFXaTfJh4"
-ROOT_ID = 8144329668
-USER_ID = 222222222  # <-- замени на ID девушки
-DB_FILE = "secure_chat.db"
-# =============================================
+BOT_TOKEN = "8046271807:AAExKsEgXLkxvrEvPWTfyfMsI2OFXaTfJh4"  # твой токен
+SECRET_PASSWORD = "topsecret123"  # пароль для секретного чата
+authorized_users = set()  # ID пользователей, которым открыт секретный чат
+user_messages = {}  # хранение сообщений для очистки
 
-# ================= ИНИЦИАЛИЗАЦИЯ БОТА =================
+# Инициализация бота
+session = AiohttpSession()
 bot = Bot(
     token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    default=DefaultBotProperties(parse_mode="HTML"),
+    session=session
 )
 dp = Dispatcher()
 
-authorized_users = set()
-waiting_for_new_password = False
-waiting_for_self_destruct = False
-
-# ================= БАЗА ДАННЫХ =================
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender_id INTEGER,
-            text TEXT,
-            timestamp TEXT
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
-    cursor.execute("SELECT value FROM settings WHERE key='password'")
-    if not cursor.fetchone():
-        cursor.execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?)",
-            ("password", "ERROR_451X")
-        )
-    conn.commit()
-    conn.close()
-
-def save_message(sender_id, text):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO messages (sender_id, text, timestamp) VALUES (?, ?, ?)",
-        (sender_id, text, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    )
-    conn.commit()
-    conn.close()
-
-def save_system_log(text):
-    save_message(0, text)
-
-def get_password():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT value FROM settings WHERE key='password'")
-    result = cursor.fetchone()
-    conn.close()
-    return result[0]
-
-def set_password(new_password):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE settings SET value=? WHERE key='password'",
-        (new_password,)
-    )
-    conn.commit()
-    conn.close()
-
-# ================= КЛАВИАТУРЫ (ПЛИТКАМИ) =================
+# --- Главное меню (обычная панель) ---
 def main_panel():
     kb = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 System Logs"), KeyboardButton(text="👥 User Manager")],
-            [KeyboardButton(text="🔍 Error Scanner"), KeyboardButton(text="🛡 Security")],
-            [KeyboardButton(text="🚪 Exit Chat")]
+            [KeyboardButton("📊 System Logs"), KeyboardButton("👥 User Manager")],
+            [KeyboardButton("🔧 Settings")]
         ],
         resize_keyboard=True
     )
     return kb
 
-def root_panel():
+# --- Секретный чат (после ввода пароля) ---
+def secret_chat_panel():
     kb = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🔑 Change Password"), KeyboardButton(text="💣 SELF-DESTRUCT")],
-            [KeyboardButton(text="🚪 Exit Chat")]
+            [KeyboardButton("💬 Send Message")],
+            [KeyboardButton("🚪 Exit Chat")]
         ],
         resize_keyboard=True
     )
     return kb
 
-# ================= СТАРТ =================
-@dp.message(CommandStart())
-async def start_handler(message: types.Message):
-    if message.from_user.id not in [ROOT_ID, USER_ID]:
-        return
-    await message.answer(
-        "🖥 <b>Server Control Panel v4.2</b>",
-        reply_markup=main_panel()
-    )
-
-# ================= ОСНОВНАЯ ЛОГИКА =================
+# --- Команда старт ---
 @dp.message()
-async def main_handler(message: types.Message):
-    global waiting_for_new_password
-    global waiting_for_self_destruct
+async def start_handler(message: types.Message):
+    if message.from_user.id not in authorized_users:
+        await message.answer("Welcome to Admin Panel", reply_markup=main_panel())
+    else:
+        await message.answer("You are in Secret Chat", reply_markup=secret_chat_panel())
 
+# --- Проверка пароля для доступа ---
+@dp.message()
+async def password_check(message: types.Message):
     user_id = message.from_user.id
-    if user_id not in [ROOT_ID, USER_ID]:
-        return
+    text = message.text
 
-    current_password = get_password()
-
-    # ===== ВХОД В СЕКРЕТНЫЙ ЧАТ =====
-    if message.text == current_password:
+    if text == SECRET_PASSWORD and user_id not in authorized_users:
         authorized_users.add(user_id)
-        role = "ROOT 👑" if user_id == ROOT_ID else "USER 👤"
-        save_system_log(f"SYSTEM: {role} entered secure channel")
-        await message.answer(f"🟢 Secure channel established.\nAccess level: {role}")
-        if user_id == ROOT_ID:
-            await message.answer("ROOT controls activated.", reply_markup=root_panel())
-        return
-
-    # ===== СМЕНА ПАРОЛЯ =====
-    if message.text == "🔑 Change Password" and user_id == ROOT_ID:
-        waiting_for_new_password = True
-        await message.answer("Enter new password:")
-        return
-    if waiting_for_new_password and user_id == ROOT_ID:
-        set_password(message.text)
-        save_system_log("SYSTEM: Password changed by ROOT")
-        waiting_for_new_password = False
-        await message.answer("🔐 Password updated successfully.")
-        return
-
-    # ===== SELF-DESTRUCT =====
-    if message.text == "💣 SELF-DESTRUCT" and user_id == ROOT_ID:
-        waiting_for_self_destruct = True
+        user_messages[user_id] = []  # создаём список сообщений для очистки
         await message.answer(
-            "⚠ WARNING\nType CONFIRM_ERASE to permanently delete all data."
+            "✅ Access Granted. Secret Chat Opened.",
+            reply_markup=secret_chat_panel()
         )
-        return
-    if waiting_for_self_destruct and message.text == "CONFIRM_ERASE" and user_id == ROOT_ID:
-        save_system_log("SYSTEM: Self-destruct initiated by ROOT")
-        if os.path.exists(DB_FILE):
-            os.remove(DB_FILE)
-        await message.answer("💥 Data purge complete.\nSystem shutting down...")
-        await bot.session.close()
-        os._exit(0)
 
-    # ===== ВЫХОД ИЗ ЧАТА =====
-    if message.text == "🚪 Exit Chat" and user_id in authorized_users:
-        authorized_users.remove(user_id)
-        save_system_log(f"SYSTEM: User {user_id} exited secure chat")
-        await message.answer(
-            "🔴 You have exited the secure chat.",
-            reply_markup=main_panel() if user_id != ROOT_ID else root_panel()
-        )
-        return
+# --- Обработка секретного чата ---
+@dp.message()
+async def secret_chat_handler(message: types.Message):
+    user_id = message.from_user.id
 
-    # ===== СЕКРЕТНЫЙ ЧАТ =====
+    # Если пользователь в секретном чате
     if user_id in authorized_users:
-        save_message(user_id, message.text)
-        partner_id = USER_ID if user_id == ROOT_ID else ROOT_ID
-        await bot.send_chat_action(partner_id, "typing")
-        await asyncio.sleep(1)
-        await bot.send_message(partner_id, message.text)
-
-# ================= АВТО-ВЫХОД ПРИ ПОКИДАНИИ ЧАТА =================
-@dp.my_chat_member()
-async def chat_member_update_handler(event: ChatMemberUpdated):
-    user_id = event.from_user.id
-    if event.new_chat_member.status in ["left", "kicked"]:
-        if user_id in authorized_users:
+        if message.text == "🚪 Exit Chat":
+            # Выход из чата
             authorized_users.remove(user_id)
-            save_system_log(f"SYSTEM: User {user_id} automatically exited secure chat (left chat)")
+            # Удаляем все сообщения бота у пользователя
+            msgs = user_messages.get(user_id, [])
+            for msg_id in msgs:
+                try:
+                    await bot.delete_message(user_id, msg_id)
+                except:
+                    pass
+            user_messages[user_id] = []
 
-# ================= ЗАПУСК =================
+            await message.answer(
+                "🔴 You have exited the secret chat.",
+                reply_markup=ReplyKeyboardMarkup(keyboard=[], resize_keyboard=True)
+            )
+        else:
+            # Сохраняем сообщение и эмулируем отправку в секретный чат
+            msg = await message.answer(f"<b>You:</b> {message.text}")
+            user_messages[user_id].append(msg.message_id)
+
+# --- Запуск бота ---
 async def main():
-    init_db()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
