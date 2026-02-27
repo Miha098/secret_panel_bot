@@ -4,9 +4,10 @@ from aiogram.client.bot import DefaultBotProperties
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+import asyncio
 
 # --- Настройки бота ---
-BOT_TOKEN = "ВАШ_ТОКЕН"
+BOT_TOKEN = "8046271807:AAH8X6vFjmv_z7B7RdfVx0z12345678"  # твой токен
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -30,7 +31,7 @@ async def start_handler(message: Message, state: FSMContext):
     await state.set_state(MiniApp.waiting_for_password)
 
 # --- Ввод пароля ---
-PASSWORD = "1234"  # Здесь можно свой пароль
+PASSWORD = "1234"  # пароль от секретного чата
 
 @dp.message(MiniApp.waiting_for_password)
 async def password_handler(message: Message, state: FSMContext):
@@ -55,5 +56,4 @@ async def secret_chat_handler(message: Message, state: FSMContext):
 
 # --- Запуск бота ---
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(dp.start_polling(bot))
