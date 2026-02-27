@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
 from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 
 # ================= НАСТРОЙКИ =================
 BOT_TOKEN = "8046271807:AAExKsEgXLkxvrEvPWTfyfMsI2OFXaTfJh4"
@@ -15,7 +16,10 @@ USER_ID = 222222222  # <-- замени на ID девушки
 DB_FILE = "secure_chat.db"
 # =============================================
 
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 dp = Dispatcher()
 
 authorized_users = set()
