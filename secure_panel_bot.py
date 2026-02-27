@@ -1,98 +1,89 @@
-from aiogram import Bot, Dispatcher, types
-from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.client.default import DefaultBotProperties
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 
+# ====== НАСТРОЙКИ ======
 BOT_TOKEN = "8046271807:AAExKsEgXLkxvrEvPWTfyfMsI2OFXaTfJh4"  # твой токен
-SECRET_PASSWORD = "topsecret123"  # пароль для секретного чата
-authorized_users = set()  # ID пользователей, которым открыт секретный чат
-user_messages = {}  # хранение сообщений для очистки
+SECRET_PASSWORD = "1234"  # пароль для секретного чата
+SECRET_CHAT_USER_ID = 8144329668  # твой Telegram ID (куда пересылать сообщения)
+# =======================
 
 # Инициализация бота
-session = AiohttpSession()
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode="HTML"),
-    session=session
-)
-dp = Dispatcher()
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
 
-# --- Главное меню (обычная панель) ---
+# FSM для мини-APP
+class SecretChat(StatesGroup):
+    chatting = State()
+
+# =======================
+
+# Кнопки панели админа
 def main_panel():
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton("📊 System Logs"), KeyboardButton("👥 User Manager")],
-            [KeyboardButton("🔧 Settings")]
-        ],
-        resize_keyboard=True
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb.add(
+        KeyboardButton("📊 System Logs"),
+        KeyboardButton("👥 User Manager"),
+        KeyboardButton("🔑 Enter Secret Chat")
     )
     return kb
 
-# --- Секретный чат (после ввода пароля) ---
-def secret_chat_panel():
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton("💬 Send Message")],
-            [KeyboardButton("🚪 Exit Chat")]
-        ],
-        resize_keyboard=True
+# Кнопки мини-APP (секретного чата)
+def secret_chat_kb():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(
+        KeyboardButton("🚪 Exit Chat")
     )
     return kb
 
-# --- Команда старт ---
-@dp.message()
+# =======================
+# Старт бота
+@dp.message(commands=["start"])
 async def start_handler(message: types.Message):
-    if message.from_user.id not in authorized_users:
-        await message.answer("Welcome to Admin Panel", reply_markup=main_panel())
+    await message.answer("Welcome to Admin Panel", reply_markup=main_panel())
+
+# Обработка кнопок главной панели
+@dp.message()
+async def main_panel_handler(message: types.Message, state: FSMContext):
+    if message.text == "🔑 Enter Secret Chat":
+        await message.answer("Введите пароль:", reply_markup=ReplyKeyboardRemove())
+        await state.set_state("waiting_password")
     else:
-        await message.answer("You are in Secret Chat", reply_markup=secret_chat_panel())
+        await message.answer(f"You clicked: {message.text}")
 
-# --- Проверка пароля для доступа ---
+# Проверка пароля
 @dp.message()
-async def password_check(message: types.Message):
-    user_id = message.from_user.id
-    text = message.text
-
-    if text == SECRET_PASSWORD and user_id not in authorized_users:
-        authorized_users.add(user_id)
-        user_messages[user_id] = []  # создаём список сообщений для очистки
-        await message.answer(
-            "✅ Access Granted. Secret Chat Opened.",
-            reply_markup=secret_chat_panel()
-        )
-
-# --- Обработка секретного чата ---
-@dp.message()
-async def secret_chat_handler(message: types.Message):
-    user_id = message.from_user.id
-
-    # Если пользователь в секретном чате
-    if user_id in authorized_users:
-        if message.text == "🚪 Exit Chat":
-            # Выход из чата
-            authorized_users.remove(user_id)
-            # Удаляем все сообщения бота у пользователя
-            msgs = user_messages.get(user_id, [])
-            for msg_id in msgs:
-                try:
-                    await bot.delete_message(user_id, msg_id)
-                except:
-                    pass
-            user_messages[user_id] = []
-
-            await message.answer(
-                "🔴 You have exited the secret chat.",
-                reply_markup=ReplyKeyboardMarkup(keyboard=[], resize_keyboard=True)
-            )
+async def password_handler(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == "waiting_password":
+        if message.text == SECRET_PASSWORD:
+            await message.answer("🔒 Секретный чат открыт!", reply_markup=secret_chat_kb())
+            await state.set_state(SecretChat.chatting)
         else:
-            # Сохраняем сообщение и эмулируем отправку в секретный чат
-            msg = await message.answer(f"<b>You:</b> {message.text}")
-            user_messages[user_id].append(msg.message_id)
+            await message.answer("❌ Неверный пароль!", reply_markup=main_panel())
+            await state.clear()
 
-# --- Запуск бота ---
-async def main():
-    await dp.start_polling(bot)
+# Секретный чат
+@dp.message()
+async def secret_chat_handler(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == SecretChat.chatting:
+        if message.text == "🚪 Exit Chat":
+            await message.answer("Вы вышли из секретного чата.", reply_markup=main_panel())
+            await state.clear()
+        else:
+            # Пересылаем сообщение в приватный чат
+            await bot.send_message(chat_id=SECRET_CHAT_USER_ID,
+                                   text=f"💬 {message.from_user.first_name}: {message.text}")
+            await message.answer("✅ Сообщение отправлено!", reply_markup=secret_chat_kb())
 
+# =======================
+# Запуск
 if __name__ == "__main__":
-    asyncio.run(main())
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    print("Бот запущен...")
+    asyncio.run(dp.start_polling(bot))
