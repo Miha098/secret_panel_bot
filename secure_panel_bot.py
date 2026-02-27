@@ -88,20 +88,21 @@ def set_password(new_password):
 
 # ================= КЛАВИАТУРЫ (ПЛИТКАМИ) =================
 def main_panel():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    kb.add(
-        KeyboardButton("📊 System Logs"),
-        KeyboardButton("👥 User Manager"),
-        KeyboardButton("🔍 Error Scanner"),
-        KeyboardButton("🛡 Security")
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton("📊 System Logs"), KeyboardButton("👥 User Manager")],
+            [KeyboardButton("🔍 Error Scanner"), KeyboardButton("🛡 Security")]
+        ],
+        resize_keyboard=True
     )
     return kb
 
 def root_panel():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    kb.add(
-        KeyboardButton("🔑 Change Password"),
-        KeyboardButton("💣 SELF-DESTRUCT")
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton("🔑 Change Password"), KeyboardButton("💣 SELF-DESTRUCT")]
+        ],
+        resize_keyboard=True
     )
     return kb
 
