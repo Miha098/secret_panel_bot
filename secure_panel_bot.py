@@ -90,8 +90,8 @@ def set_password(new_password):
 def main_panel():
     kb = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton("📊 System Logs"), KeyboardButton("👥 User Manager")],
-            [KeyboardButton("🔍 Error Scanner"), KeyboardButton("🛡 Security")]
+            [KeyboardButton(text="📊 System Logs"), KeyboardButton(text="👥 User Manager")],
+            [KeyboardButton(text="🔍 Error Scanner"), KeyboardButton(text="🛡 Security")]
         ],
         resize_keyboard=True
     )
@@ -100,7 +100,7 @@ def main_panel():
 def root_panel():
     kb = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton("🔑 Change Password"), KeyboardButton("💣 SELF-DESTRUCT")]
+            [KeyboardButton(text="🔑 Change Password"), KeyboardButton(text="💣 SELF-DESTRUCT")]
         ],
         resize_keyboard=True
     )
@@ -115,13 +115,6 @@ async def start_handler(message: types.Message):
         "🖥 <b>Server Control Panel v4.2</b>",
         reply_markup=main_panel()
     )
-
-# ================= ERROR SCANNER =================
-@dp.message(lambda m: m.text == "🔍 Error Scanner")
-async def error_scanner(message: types.Message):
-    if message.from_user.id not in [ROOT_ID, USER_ID]:
-        return
-    await message.answer("Enter error code:")
 
 # ================= ОСНОВНАЯ ЛОГИКА =================
 @dp.message()
